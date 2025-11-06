@@ -466,7 +466,7 @@ class AzureFabric:
                 failover_priority=0,
             )],
             consistency_policy=cosmosdb.ConsistencyPolicyArgs(
-                default_consistency_level=cosmosdb.DefaultConsistencyLevel.Session,
+                default_consistency_level=cosmosdb.DefaultConsistencyLevel.SESSION,
             ),
             kind=props.get("kind", "GlobalDocumentDB"),  # MongoDB, Table, etc.
         )
@@ -526,17 +526,30 @@ class AzureFabric:
         )
         
         # App Service
+        site_config_args = web.SiteConfigArgs()
+        
+        # Set runtime only if specified and valid
+        if props.get("osType") == "Linux" and props.get("runtime"):
+            # Validate runtime format (e.g., "PYTHON|3.9" or "DOCKER|nginx")
+            runtime = props.get("runtime")
+            if "|" in runtime:
+                site_config_args.linux_fx_version = runtime
+        elif props.get("osType") == "Linux":
+            # Default Python runtime for Linux
+            site_config_args.linux_fx_version = "PYTHON|3.11"
+        
+        # Add environment variables
+        if props.get("env"):
+            site_config_args.app_settings = [
+                web.NameValuePairArgs(name=k, value=str(v))
+                for k, v in props.get("env", {}).items()
+            ]
+        
         app = web.WebApp(
             f"app-{name}",
             resource_group_name=self.rg_name,
             server_farm_id=plan.id,
-            site_config=web.SiteConfigArgs(
-                app_settings=[
-                    web.NameValuePairArgs(name=k, value=str(v))
-                    for k, v in props.get("env", {}).items()
-                ] if props.get("env") else None,
-                linux_fx_version=props.get("runtime", "PYTHON|3.9") if props.get("osType") == "Linux" else None,
-            ),
+            site_config=site_config_args,
         )
         
         self.node_index[node["id"]] = {
@@ -635,12 +648,13 @@ class AzureFabric:
         name = safe_name(node.get("name") or node["id"])[:40]
         props = node.get("props", {})
         
-        # Application Insights
+        # Application Insights (without LogAnalytics ingestion mode to avoid workspace requirement)
         app_insights = applicationinsights.Component(
             f"appi-{name}",
             resource_group_name=self.rg_name,
             kind="web",
             application_type=applicationinsights.ApplicationType.WEB,
+            ingestion_mode=applicationinsights.IngestionMode.APPLICATION_INSIGHTS,
         )
         
         self.node_index[node["id"]] = {
@@ -729,6 +743,16 @@ class AzureFabric:
             # Export bindings; extend to inject as secrets/env if desired
             pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
             pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
+
+        elif src.get("kind") == "azure.servicebus" and dst.get("kind") == "azure.functionapp":
+            # Export Service Bus connection for Function App
+            pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
+
+        elif src.get("kind") == "azure.functionapp" and dst.get("kind") == "azure.appservice":
+            # Export Function App URL for App Service
+            func_url = pulumi.Output.concat("https://", src["app"].default_host_name)
+            pulumi.export(f"bind-{safe_name(to_id)}-functionUrl", func_url)
 
         else:
             pulumi.log.warn(f"No connector for {src.get('kind')} -> {dst.get('kind')}; skipping")
