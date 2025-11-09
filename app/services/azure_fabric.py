@@ -364,14 +364,16 @@ class AzureFabric:
             )
         )
         
-        # App Service Plan
+        # App Service Plan for Function App (Consumption plan)
+        sku_name = props.get("sku", "Y1")
         plan = web.AppServicePlan(
             f"plan-{name}",
             resource_group_name=self.rg_name,
             kind="FunctionApp",
+            reserved=True,  # Required for Linux Function Apps
             sku=web.SkuDescriptionArgs(
-                name=props.get("sku", "Y1"),  # Consumption plan (serverless)
-                tier="Dynamic",
+                name=sku_name,  # Y1 = Consumption plan
+                tier="Dynamic" if sku_name == "Y1" else "ElasticPremium",
             ),
         )
         
@@ -380,6 +382,7 @@ class AzureFabric:
             f"func-{name}",
             resource_group_name=self.rg_name,
             server_farm_id=plan.id,
+            kind="functionapp",  # Explicitly set kind
             site_config=web.SiteConfigArgs(
                 app_settings=[
                     web.NameValuePairArgs(name="AzureWebJobsStorage", value=func_conn_str),
@@ -467,12 +470,26 @@ class AzureFabric:
             kind=props.get("kind", "GlobalDocumentDB"),  # MongoDB, Table, etc.
         )
         
-        # Database
+        # Database - ensure name consistency
+        # Use the databaseName from props, or derive from node name/id
+        db_name = props.get("databaseName")
+        if not db_name:
+            # If no databaseName provided, use a safe version of the node name/id
+            db_name = safe_name(node.get("name") or node["id"])[:40]
+            # Remove any prefixes that might have been added
+            if db_name.startswith("cosmos-") or db_name.startswith("cosmosdb-"):
+                db_name = db_name.replace("cosmos-", "").replace("cosmosdb-", "")
+            if not db_name.startswith("db-"):
+                db_name = f"db-{db_name}"
+        
+        # Database - use db_name for database ID, and also as database_name parameter
+        # The database_name parameter (used in URI) should match the id in the resource body
         database = cosmosdb.SqlResourceSqlDatabase(
             f"cosmosdb-{name}",
             resource_group_name=self.rg_name,
             account_name=account.name,
-            resource=cosmosdb.SqlDatabaseResourceArgs(id=props.get("databaseName", f"db-{name}")),
+            database_name=db_name,  # This is used in the URI path
+            resource=cosmosdb.SqlDatabaseResourceArgs(id=db_name),  # This is the database ID
         )
         
         # Container (like a table)
@@ -510,15 +527,26 @@ class AzureFabric:
         name = safe_name(node.get("name") or node["id"])[:40]
         props = node.get("props", {})
         
+        # Handle SKU - can be string or object
+        sku_prop = props.get("sku", "Developer")
+        if isinstance(sku_prop, dict):
+            sku_name = sku_prop.get("name", "Developer")
+            sku_capacity = sku_prop.get("capacity", 1)
+        else:
+            # If it's a string, use it as the SKU name
+            sku_name = sku_prop if isinstance(sku_prop, str) else "Developer"
+            sku_capacity = 1
+        
         # API Management Service
+        # Note: Developer SKU has restrictions on some settings
         apim = apimanagement.ApiManagementService(
             f"apim-{name}",
             resource_group_name=self.rg_name,
             publisher_name=props.get("publisherName", "Contoso"),
             publisher_email=props.get("publisherEmail", "admin@contoso.com"),
             sku=apimanagement.ApiManagementServiceSkuPropertiesArgs(
-                name=props.get("sku", "Developer"),  # Developer tier (cheapest)
-                capacity=1,
+                name=sku_name,
+                capacity=sku_capacity if sku_name != "Consumption" else None,
             ),
         )
         
