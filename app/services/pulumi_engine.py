@@ -2,7 +2,8 @@
 from __future__ import annotations
 import os, shutil
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+import requests
 from pulumi import automation as auto
 from .program_builder import build_pulumi_program
 
@@ -129,9 +130,141 @@ class PulumiEngine:
         }
 
     @staticmethod
-    def destroy(project: str, env_name: str):
+    def _get_azure_token(client_id: str, client_secret: str, tenant_id: str) -> str:
+        """Get Azure AD access token for Resource Manager API"""
+        url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        data = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://management.azure.com/.default",
+            "grant_type": "client_credentials"
+        }
+        response = requests.post(url, data=data)
+        response.raise_for_status()
+        return response.json()["access_token"]
+    
+    @staticmethod
+    def _delete_resource_group_direct(subscription_id: str, resource_group: str, creds: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Delete resource group directly via Azure REST API"""
+        if not creds:
+            return {"deleted": False, "message": "Azure credentials required for direct deletion"}
+        
+        try:
+            token = PulumiEngine._get_azure_token(
+                creds["clientId"],
+                creds["clientSecret"],
+                creds["tenantId"]
+            )
+            
+            url = f"https://management.azure.com/subscriptions/{subscription_id}/resourcegroups/{resource_group}?api-version=2021-04-01"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.delete(url, headers=headers)
+            
+            if response.status_code == 202:
+                return {
+                    "deleted": True,
+                    "message": f"Resource group '{resource_group}' deletion initiated. This may take 5-10 minutes."
+                }
+            elif response.status_code == 200:
+                return {
+                    "deleted": True,
+                    "message": f"Resource group '{resource_group}' deleted successfully."
+                }
+            elif response.status_code == 404:
+                return {
+                    "deleted": False,
+                    "message": f"Resource group '{resource_group}' not found (may already be deleted)."
+                }
+            else:
+                return {
+                    "deleted": False,
+                    "message": f"Failed to delete resource group. Status: {response.status_code}",
+                    "error": response.text
+                }
+        except Exception as e:
+            return {
+                "deleted": False,
+                "message": f"Error deleting resource group: {str(e)}"
+            }
+    
+    @staticmethod
+    def destroy(project: str, env_name: str, creds: Optional[Dict[str, Any]] = None):
         def program(): pass
-        stack, _ = _stack(project, env_name, program)
-        res = stack.destroy(on_output=print)
-        stack.workspace.remove_stack(stack.name)
-        return {"destroyed": True}
+        
+        # Try Pulumi destroy first
+        try:
+            stack, _ = _stack(project, env_name, program)
+        except Exception as e:
+            # Stack doesn't exist - try direct Azure API deletion
+            resource_group = f"rg-{project}-{env_name}"
+            if creds:
+                return {
+                    "destroyed": False,
+                    "pulumi_stack": "not_found",
+                    "attempting_direct_deletion": True,
+                    **PulumiEngine._delete_resource_group_direct(
+                        creds.get("subscriptionId", ""),
+                        resource_group,
+                        creds
+                    )
+                }
+            else:
+                return {
+                    "destroyed": False,
+                    "message": f"Stack '{project}-{env_name}' not found and no credentials provided for direct deletion.",
+                    "error": str(e)
+                }
+        
+        try:
+            # Actually destroy the resources - this deletes them from Azure
+            res = stack.destroy(on_output=print)
+            
+            # Extract deletion information
+            deleted_count = 0
+            if hasattr(res, "summary") and res.summary:
+                resource_changes = getattr(res.summary, "resource_changes", {})
+                if resource_changes:
+                    deleted_count = getattr(resource_changes, "delete", 0)
+            
+            # Remove the stack from Pulumi workspace
+            try:
+                stack.workspace.remove_stack(stack.name)
+            except:
+                pass  # Stack might already be removed
+            
+            return {
+                "destroyed": True,
+                "resources_deleted": deleted_count,
+                "message": f"Destroyed {deleted_count} resources via Pulumi. Deletion may take 5-10 minutes to complete in Azure. Refresh Azure Portal to see updates.",
+                "resource_group": f"rg-{project}-{env_name}"
+            }
+        except Exception as e:
+            # If Pulumi destroy fails, try direct Azure API deletion
+            resource_group = f"rg-{project}-{env_name}"
+            if creds:
+                direct_result = PulumiEngine._delete_resource_group_direct(
+                    creds.get("subscriptionId", ""),
+                    resource_group,
+                    creds
+                )
+                return {
+                    "destroyed": direct_result.get("deleted", False),
+                    "pulumi_destroy_failed": True,
+                    "error": str(e),
+                    **direct_result
+                }
+            else:
+                # Try to remove stack even if destroy failed
+                try:
+                    stack.workspace.remove_stack(stack.name)
+                except:
+                    pass
+                return {
+                    "destroyed": False,
+                    "error": str(e),
+                    "message": "Destroy failed. Some resources may still exist. Provide credentials to attempt direct deletion."
+                }

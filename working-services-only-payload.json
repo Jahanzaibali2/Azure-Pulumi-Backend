@@ -1,0 +1,100 @@
+{
+  "ir": {
+    "project": "clean-architecture",
+    "env": "prod",
+    "location": "southeastasia",
+    "nodes": [
+      {
+        "id": "st-main",
+        "kind": "azure.storage",
+        "name": "cleanstorage2025",
+        "props": {
+          "containerName": "uploads",
+          "sku": "Standard_LRS",
+          "accountKind": "StorageV2"
+        }
+      },
+      {
+        "id": "sb-events",
+        "kind": "azure.servicebus",
+        "name": "clean-event-bus",
+        "props": {
+          "queueName": "events",
+          "sku": "Standard"
+        }
+      },
+      {
+        "id": "app-worker",
+        "kind": "azure.containerapp",
+        "name": "clean-worker",
+        "props": {
+          "image": "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest",
+          "cpu": 0.5,
+          "memory": "1Gi",
+          "env": {
+            "LOG_LEVEL": "info",
+            "ENVIRONMENT": "production"
+          }
+        }
+      },
+      {
+        "id": "func-api",
+        "kind": "azure.functionapp",
+        "name": "clean-api-functions",
+        "props": {
+          "sku": "Y1"
+        }
+      },
+      {
+        "id": "kv-secrets",
+        "kind": "azure.keyvault",
+        "name": "clean-secrets",
+        "props": {
+          "tenantId": "75df096c-8b72-48e4-9b91-cbf79d87ee3a"
+        }
+      },
+      {
+        "id": "appi-monitor",
+        "kind": "azure.appinsights",
+        "name": "clean-monitor"
+      },
+      {
+        "id": "vnet-network",
+        "kind": "azure.vnet",
+        "name": "clean-network",
+        "props": {
+          "addressSpaces": ["10.0.0.0/16"],
+          "subnets": [
+            {"name": "web-subnet", "addressPrefix": "10.0.1.0/24"},
+            {"name": "app-subnet", "addressPrefix": "10.0.2.0/24"},
+            {"name": "db-subnet", "addressPrefix": "10.0.3.0/24"}
+          ]
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "st-main",
+        "to": "sb-events",
+        "intent": "notify"
+      },
+      {
+        "from": "sb-events",
+        "to": "app-worker",
+        "intent": "notify"
+      },
+      {
+        "from": "sb-events",
+        "to": "func-api",
+        "intent": "notify"
+      }
+    ]
+  },
+  "creds": {
+    "clientId": "...",
+    "clientSecret": "...",
+    "subscriptionId": "...",
+    "tenantId": "..."
+  }
+}
+

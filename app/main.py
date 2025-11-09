@@ -63,6 +63,8 @@ def up(req: UpRequest):
 @app.post("/destroy")
 def destroy(req: DestroyRequest):
     try:
-        return PulumiEngine.destroy(req.project, req.env)
+        _export_azure_creds(req.creds)
+        creds_dict = req.creds.model_dump() if req.creds else None
+        return PulumiEngine.destroy(req.project, req.env, creds_dict)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

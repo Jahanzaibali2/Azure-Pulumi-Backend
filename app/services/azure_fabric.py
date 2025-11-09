@@ -14,7 +14,6 @@ from pulumi_azure_native import (
     cosmosdb,
     apimanagement,
     keyvault,
-    redis,
     applicationinsights,
 )
 from .naming import safe_name
@@ -30,9 +29,8 @@ class AzureFabric:
         # Registry pattern: Map service kinds to their creation methods
         # AWS Equivalents:
         # EC2 → azure.vm, Lambda → azure.functionapp, RDS → azure.sql, 
-        # DynamoDB → azure.cosmosdb, Elastic Beanstalk → azure.appservice,
-        # API Gateway → azure.apimanagement, Secrets Manager → azure.keyvault,
-        # ElastiCache → azure.redis, CloudWatch → azure.appinsights, VPC → azure.vnet
+        # DynamoDB → azure.cosmosdb, API Gateway → azure.apimanagement, 
+        # Secrets Manager → azure.keyvault, CloudWatch → azure.appinsights, VPC → azure.vnet
         self._service_registry: Dict[str, callable] = {
             "azure.storage": self._create_storage,  # S3 equivalent
             "azure.servicebus": self._create_servicebus,  # SQS equivalent
@@ -41,10 +39,8 @@ class AzureFabric:
             "azure.functionapp": self._create_function_app,  # Lambda equivalent
             "azure.sql": self._create_sql_database,  # RDS equivalent
             "azure.cosmosdb": self._create_cosmos_db,  # DynamoDB equivalent
-            "azure.appservice": self._create_app_service,  # Elastic Beanstalk equivalent
             "azure.apimanagement": self._create_api_management,  # API Gateway equivalent
             "azure.keyvault": self._create_key_vault,  # Secrets Manager equivalent
-            "azure.redis": self._create_redis_cache,  # ElastiCache equivalent
             "azure.appinsights": self._create_application_insights,  # CloudWatch equivalent
             "azure.vnet": self._create_virtual_network,  # VPC equivalent
         }
@@ -509,56 +505,6 @@ class AzureFabric:
         self._outputs[f"cosmosdb-{name}-endpoint"] = account.document_endpoint
         self._outputs[f"cosmosdb-{name}-primaryKey"] = keys.primary_master_key
 
-    def _create_app_service(self, node: Dict[str, Any]):
-        """Create Azure App Service (Elastic Beanstalk equivalent) - Web app hosting"""
-        name = safe_name(node.get("name") or node["id"])[:40]
-        props = node.get("props", {})
-        
-        # App Service Plan
-        plan = web.AppServicePlan(
-            f"plan-{name}",
-            resource_group_name=self.rg_name,
-            kind="app",
-            sku=web.SkuDescriptionArgs(
-                name=props.get("sku", "F1"),  # Free tier
-                tier=props.get("tier", "Free"),
-            ),
-        )
-        
-        # App Service
-        site_config_args = web.SiteConfigArgs()
-        
-        # Set runtime only if specified and valid
-        if props.get("osType") == "Linux" and props.get("runtime"):
-            # Validate runtime format (e.g., "PYTHON|3.9" or "DOCKER|nginx")
-            runtime = props.get("runtime")
-            if "|" in runtime:
-                site_config_args.linux_fx_version = runtime
-        elif props.get("osType") == "Linux":
-            # Default Python runtime for Linux
-            site_config_args.linux_fx_version = "PYTHON|3.11"
-        
-        # Add environment variables
-        if props.get("env"):
-            site_config_args.app_settings = [
-                web.NameValuePairArgs(name=k, value=str(v))
-                for k, v in props.get("env", {}).items()
-            ]
-        
-        app = web.WebApp(
-            f"app-{name}",
-            resource_group_name=self.rg_name,
-            server_farm_id=plan.id,
-            site_config=site_config_args,
-        )
-        
-        self.node_index[node["id"]] = {
-            "kind": "azure.appservice",
-            "app": app,
-            "plan": plan,
-        }
-        self._outputs[f"appservice-{name}-url"] = pulumi.Output.concat("https://", app.default_host_name)
-
     def _create_api_management(self, node: Dict[str, Any]):
         """Create Azure API Management (API Gateway equivalent) - API gateway service"""
         name = safe_name(node.get("name") or node["id"])[:40]
@@ -609,39 +555,6 @@ class AzureFabric:
             "vault": vault,
         }
         self._outputs[f"keyvault-{name}-uri"] = vault.properties.vault_uri
-
-    def _create_redis_cache(self, node: Dict[str, Any]):
-        """Create Azure Redis Cache (ElastiCache equivalent) - In-memory cache"""
-        name = safe_name(node.get("name") or node["id"])[:40]
-        props = node.get("props", {})
-        
-        # Redis Cache
-        redis_cache = redis.Redis(
-            f"redis-{name}",
-            resource_group_name=self.rg_name,
-            sku=redis.SkuArgs(
-                name=props.get("sku", "Basic"),
-                family=props.get("family", "C"),
-                capacity=props.get("capacity", 0),  # Basic C0 (250MB)
-            ),
-            enable_non_ssl_port=False,
-            minimum_tls_version="1.2",
-        )
-        
-        # Get access keys
-        keys = redis.list_redis_keys_output(
-            resource_group_name=self.rg_name,
-            name=redis_cache.name,
-        )
-        
-        self.node_index[node["id"]] = {
-            "kind": "azure.redis",
-            "cache": redis_cache,
-        }
-        self._outputs[f"redis-{name}-hostname"] = redis_cache.host_name
-        self._outputs[f"redis-{name}-port"] = redis_cache.port
-        self._outputs[f"redis-{name}-primaryKey"] = keys.primary_key
-        self._outputs[f"redis-{name}-sslPort"] = redis_cache.ssl_port
 
     def _create_application_insights(self, node: Dict[str, Any]):
         """Create Azure Application Insights (CloudWatch equivalent) - Application monitoring"""
@@ -748,11 +661,6 @@ class AzureFabric:
             # Export Service Bus connection for Function App
             pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
             pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
-
-        elif src.get("kind") == "azure.functionapp" and dst.get("kind") == "azure.appservice":
-            # Export Function App URL for App Service
-            func_url = pulumi.Output.concat("https://", src["app"].default_host_name)
-            pulumi.export(f"bind-{safe_name(to_id)}-functionUrl", func_url)
 
         else:
             pulumi.log.warn(f"No connector for {src.get('kind')} -> {dst.get('kind')}; skipping")

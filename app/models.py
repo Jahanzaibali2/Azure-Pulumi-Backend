@@ -38,3 +38,4 @@ class UpRequest(BaseModel):
 class DestroyRequest(BaseModel):
     project: str
     env: str
+    creds: Optional[AzureCreds] = None
