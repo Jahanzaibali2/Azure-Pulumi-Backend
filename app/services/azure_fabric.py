@@ -690,5 +690,403 @@ class AzureFabric:
             pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
             pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
 
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.functionapp":
+            # Key Vault → Function App: Export Key Vault URI for Function App to use
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.containerapp":
+            # Key Vault → Container App: Export Key Vault URI
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        elif src.get("kind") == "azure.cosmosdb" and dst.get("kind") == "azure.functionapp":
+            # Cosmos DB → Function App: Export connection info
+            endpoint = src["account"].document_endpoint
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-endpoint", endpoint)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-database", src["database"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-container", src["container"].name)
+
+        elif src.get("kind") == "azure.cosmosdb" and dst.get("kind") == "azure.containerapp":
+            # Cosmos DB → Container App: Export connection info
+            endpoint = src["account"].document_endpoint
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-endpoint", endpoint)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-database", src["database"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-container", src["container"].name)
+
+        elif src.get("kind") == "azure.sql" and dst.get("kind") == "azure.functionapp":
+            # SQL → Function App: Export connection string
+            server_fqdn = src["server"].fully_qualified_domain_name
+            db_name = src["database"].name
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-server", server_fqdn)
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-database", db_name)
+
+        elif src.get("kind") == "azure.sql" and dst.get("kind") == "azure.containerapp":
+            # SQL → Container App: Export connection info
+            server_fqdn = src["server"].fully_qualified_domain_name
+            db_name = src["database"].name
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-server", server_fqdn)
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-database", db_name)
+
+        elif src.get("kind") == "azure.storage" and dst.get("kind") == "azure.functionapp":
+            # Storage → Function App: Export storage connection for blob triggers
+            storage_conn = src["connectionString"]
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-conn", storage_conn)
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-account", src["account"].name)
+
+        elif src.get("kind") == "azure.storage" and dst.get("kind") == "azure.containerapp":
+            # Storage → Container App: Export storage connection
+            storage_conn = src["connectionString"]
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-conn", storage_conn)
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-account", src["account"].name)
+
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.functionapp":
+            # App Insights → Function App: Export instrumentation key
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.containerapp":
+            # App Insights → Container App: Export instrumentation key
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.apimanagement" and dst.get("kind") == "azure.functionapp":
+            # API Management → Function App: Export API Management gateway URL
+            apim = src["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        elif src.get("kind") == "azure.apimanagement" and dst.get("kind") == "azure.containerapp":
+            # API Management → Container App: Export gateway URL
+            apim = src["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        # Storage → Other Services
+        elif src.get("kind") == "azure.storage" and dst.get("kind") == "azure.sql":
+            # Storage → SQL: Export storage connection for backups/data import
+            storage_conn = src["connectionString"]
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-conn", storage_conn)
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-account", src["account"].name)
+
+        elif src.get("kind") == "azure.storage" and dst.get("kind") == "azure.cosmosdb":
+            # Storage → Cosmos DB: Export storage connection for backups/data import
+            storage_conn = src["connectionString"]
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-conn", storage_conn)
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-account", src["account"].name)
+
+        elif src.get("kind") == "azure.storage" and dst.get("kind") == "azure.vm":
+            # Storage → VM: Export storage connection for VM disk/file shares
+            storage_conn = src["connectionString"]
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-conn", storage_conn)
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-account", src["account"].name)
+
+        elif src.get("kind") == "azure.storage" and dst.get("kind") == "azure.apimanagement":
+            # Storage → API Management: Export storage connection for API documentation
+            storage_conn = src["connectionString"]
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-conn", storage_conn)
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-account", src["account"].name)
+
+        # Service Bus → Other Services
+        elif src.get("kind") == "azure.servicebus" and dst.get("kind") == "azure.sql":
+            # Service Bus → SQL: Export queue info for database notifications
+            pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
+
+        elif src.get("kind") == "azure.servicebus" and dst.get("kind") == "azure.cosmosdb":
+            # Service Bus → Cosmos DB: Export queue info for database notifications
+            pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
+
+        elif src.get("kind") == "azure.servicebus" and dst.get("kind") == "azure.vm":
+            # Service Bus → VM: Export queue info for VM notifications
+            pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
+
+        elif src.get("kind") == "azure.servicebus" and dst.get("kind") == "azure.apimanagement":
+            # Service Bus → API Management: Export queue info for API events
+            pulumi.export(f"bind-{safe_name(to_id)}-queue", src["queue"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-conn", src["connectionString"])
+
+        # Database → Other Services
+        elif src.get("kind") == "azure.sql" and dst.get("kind") == "azure.storage":
+            # SQL → Storage: Export SQL info for backups
+            server_fqdn = src["server"].fully_qualified_domain_name
+            db_name = src["database"].name
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-server", server_fqdn)
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-database", db_name)
+
+        elif src.get("kind") == "azure.sql" and dst.get("kind") == "azure.servicebus":
+            # SQL → Service Bus: Export SQL info for database events
+            server_fqdn = src["server"].fully_qualified_domain_name
+            db_name = src["database"].name
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-server", server_fqdn)
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-database", db_name)
+
+        elif src.get("kind") == "azure.cosmosdb" and dst.get("kind") == "azure.storage":
+            # Cosmos DB → Storage: Export Cosmos info for backups
+            endpoint = src["account"].document_endpoint
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-endpoint", endpoint)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-database", src["database"].name)
+
+        elif src.get("kind") == "azure.cosmosdb" and dst.get("kind") == "azure.servicebus":
+            # Cosmos DB → Service Bus: Export Cosmos info for database events
+            endpoint = src["account"].document_endpoint
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-endpoint", endpoint)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-database", src["database"].name)
+
+        # Key Vault → Other Services
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.sql":
+            # Key Vault → SQL: Export Key Vault URI for database credentials
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.cosmosdb":
+            # Key Vault → Cosmos DB: Export Key Vault URI for database credentials
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.vm":
+            # Key Vault → VM: Export Key Vault URI for VM secrets
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.apimanagement":
+            # Key Vault → API Management: Export Key Vault URI for API keys
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.storage":
+            # Key Vault → Storage: Export Key Vault URI for storage account keys
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        elif src.get("kind") == "azure.keyvault" and dst.get("kind") == "azure.servicebus":
+            # Key Vault → Service Bus: Export Key Vault URI for queue credentials
+            vault_uri = src["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", src["vault"].name)
+
+        # App Insights → Other Services
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.sql":
+            # App Insights → SQL: Export instrumentation for database monitoring
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.cosmosdb":
+            # App Insights → Cosmos DB: Export instrumentation for database monitoring
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.vm":
+            # App Insights → VM: Export instrumentation for VM monitoring
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.apimanagement":
+            # App Insights → API Management: Export instrumentation for API monitoring
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.storage":
+            # App Insights → Storage: Export instrumentation for storage monitoring
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.appinsights" and dst.get("kind") == "azure.servicebus":
+            # App Insights → Service Bus: Export instrumentation for queue monitoring
+            app_insights = src["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        # API Management → Other Services
+        elif src.get("kind") == "azure.apimanagement" and dst.get("kind") == "azure.sql":
+            # API Management → SQL: Export gateway URL for database APIs
+            apim = src["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        elif src.get("kind") == "azure.apimanagement" and dst.get("kind") == "azure.cosmosdb":
+            # API Management → Cosmos DB: Export gateway URL for database APIs
+            apim = src["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        elif src.get("kind") == "azure.apimanagement" and dst.get("kind") == "azure.vm":
+            # API Management → VM: Export gateway URL for VM APIs
+            apim = src["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        elif src.get("kind") == "azure.apimanagement" and dst.get("kind") == "azure.storage":
+            # API Management → Storage: Export gateway URL for storage APIs
+            apim = src["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        elif src.get("kind") == "azure.apimanagement" and dst.get("kind") == "azure.servicebus":
+            # API Management → Service Bus: Export gateway URL for queue APIs
+            apim = src["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        # VNet → All Services (Network connectivity)
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.vm":
+            # VNet → VM: Export VNet info for VM networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.containerapp":
+            # VNet → Container App: Export VNet info for container networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.functionapp":
+            # VNet → Function App: Export VNet info for function networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.sql":
+            # VNet → SQL: Export VNet info for database networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.cosmosdb":
+            # VNet → Cosmos DB: Export VNet info for database networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.storage":
+            # VNet → Storage: Export VNet info for storage networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.servicebus":
+            # VNet → Service Bus: Export VNet info for queue networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.apimanagement":
+            # VNet → API Management: Export VNet info for API gateway networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.keyvault":
+            # VNet → Key Vault: Export VNet info for key vault networking
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        elif src.get("kind") == "azure.vnet" and dst.get("kind") == "azure.appinsights":
+            # VNet → App Insights: Export VNet info (for reference)
+            vnet = src["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
+        # Function App ↔ Container App connections
+        elif src.get("kind") == "azure.functionapp" and dst.get("kind") == "azure.containerapp":
+            # Function App → Container App: Export Function App URL for Container App to call
+            func_app = src["app"]
+            func_url = pulumi.Output.concat("https://", func_app.default_host_name)
+            pulumi.export(f"bind-{safe_name(to_id)}-functionapp-url", func_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-functionapp-name", func_app.name)
+
+        elif src.get("kind") == "azure.containerapp" and dst.get("kind") == "azure.functionapp":
+            # Container App → Function App: Export Container App FQDN for Function App to call
+            container_app = src["app"]
+            container_fqdn = container_app.configuration.apply(
+                lambda c: c.ingress.fqdn if c and c.ingress else None
+            )
+            pulumi.export(f"bind-{safe_name(to_id)}-containerapp-fqdn", container_fqdn)
+            pulumi.export(f"bind-{safe_name(to_id)}-containerapp-name", container_app.name)
+
+        # VM → All Services (VM can connect to everything)
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.storage":
+            # VM → Storage: Export storage connection for VM to access
+            storage_conn = dst["connectionString"]
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-conn", storage_conn)
+            pulumi.export(f"bind-{safe_name(to_id)}-storage-account", dst["account"].name)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.servicebus":
+            # VM → Service Bus: Export queue connection for VM
+            pulumi.export(f"bind-{safe_name(to_id)}-queue", dst["queue"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-conn", dst["connectionString"])
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.containerapp":
+            # VM → Container App: Export Container App FQDN for VM to call
+            container_app = dst["app"]
+            container_fqdn = container_app.configuration.apply(
+                lambda c: c.ingress.fqdn if c and c.ingress else None
+            )
+            pulumi.export(f"bind-{safe_name(to_id)}-containerapp-fqdn", container_fqdn)
+            pulumi.export(f"bind-{safe_name(to_id)}-containerapp-name", container_app.name)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.functionapp":
+            # VM → Function App: Export Function App URL for VM to call
+            func_app = dst["app"]
+            func_url = pulumi.Output.concat("https://", func_app.default_host_name)
+            pulumi.export(f"bind-{safe_name(to_id)}-functionapp-url", func_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-functionapp-name", func_app.name)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.sql":
+            # VM → SQL: Export SQL connection info for VM
+            server_fqdn = dst["server"].fully_qualified_domain_name
+            db_name = dst["database"].name
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-server", server_fqdn)
+            pulumi.export(f"bind-{safe_name(to_id)}-sql-database", db_name)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.cosmosdb":
+            # VM → Cosmos DB: Export Cosmos connection info for VM
+            endpoint = dst["account"].document_endpoint
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-endpoint", endpoint)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-database", dst["database"].name)
+            pulumi.export(f"bind-{safe_name(to_id)}-cosmos-container", dst["container"].name)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.keyvault":
+            # VM → Key Vault: Export Key Vault URI for VM
+            vault_uri = dst["vault"].properties.vault_uri
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-uri", vault_uri)
+            pulumi.export(f"bind-{safe_name(to_id)}-keyvault-name", dst["vault"].name)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.appinsights":
+            # VM → App Insights: Export instrumentation for VM monitoring
+            app_insights = dst["insights"]
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-key", app_insights.instrumentation_key)
+            pulumi.export(f"bind-{safe_name(to_id)}-appinsights-conn", app_insights.connection_string)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.apimanagement":
+            # VM → API Management: Export gateway URL for VM
+            apim = dst["service"]
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-gateway", apim.gateway_url)
+            pulumi.export(f"bind-{safe_name(to_id)}-apim-portal", apim.portal_url)
+
+        elif src.get("kind") == "azure.vm" and dst.get("kind") == "azure.vnet":
+            # VM → VNet: Export VNet info (VM is already in the VNet, but export for reference)
+            vnet = dst["vnet"]
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-id", vnet.id)
+            pulumi.export(f"bind-{safe_name(to_id)}-vnet-name", vnet.name)
+
         else:
             pulumi.log.warn(f"No connector for {src.get('kind')} -> {dst.get('kind')}; skipping")

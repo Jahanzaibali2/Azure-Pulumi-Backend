@@ -133,7 +133,7 @@ Each service supports specific properties. See [Infrastructure Definition](#infr
    .\venv\Scripts\activate
    
    # Linux/Mac
-   source venv/bin/activate
+   source venv/Scripts/activate
    ```
 
 3. **Install dependencies**
