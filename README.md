@@ -29,11 +29,12 @@ This service provides a REST API that accepts infrastructure definitions in a gr
 
 - **Graph-based Infrastructure Definition**: Define infrastructure as a graph of nodes (resources) and edges (connections)
 - **11 Azure Resource Types**: Supports Storage, Service Bus, Container Apps, VMs, Function Apps, SQL, Cosmos DB, API Management, Key Vault, Application Insights, and Virtual Networks
-- **Automatic Resource Connections**: Automatically configures Event Grid subscriptions and bindings between resources
+- **88+ Edge Connections**: Comprehensive bidirectional connections between all services (see [EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md))
+- **Automatic Resource Connections**: Automatically configures Event Grid subscriptions, bindings, and connection exports between resources
 - **Preview Before Deploy**: Preview infrastructure changes without deploying
-- **Enhanced Destroy API**: Delete resources via Pulumi or direct Azure REST API
+- **Enhanced Destroy API**: Delete resources via Pulumi or direct Azure REST API fallback
 - **Pulumi Integration**: Uses Pulumi Azure Native for reliable infrastructure provisioning
-- **Registry Pattern**: Extensible service creation using a registry pattern
+- **Registry Pattern**: Clean, extensible service creation using a separate service registry module
 
 ---
 
@@ -54,9 +55,17 @@ This service provides a REST API that accepts infrastructure definitions in a gr
   10. Application Insights (CloudWatch equivalent)
   11. Virtual Network (VPC equivalent)
 
-- **Resource Connections**: Storage → Service Bus → Container App/Function App
-- **Destroy API**: Enhanced with direct Azure REST API fallback
+- **88+ Edge Connections**: All valid Azure service connections implemented and tested
+  - Storage ↔ Service Bus, Function App, Container App, SQL, Cosmos, VM, API Management, VNet
+  - Service Bus ↔ Function App, Container App, VM, SQL, Cosmos, API Management, VNet
+  - Function App ↔ Container App (bidirectional), Storage, Service Bus, SQL, Cosmos, Key Vault, App Insights, API Management, VNet
+  - Container App ↔ Function App (bidirectional), Storage, Service Bus, SQL, Cosmos, Key Vault, App Insights, API Management, VNet
+  - VM → All services (can connect to everything)
+  - API Management → Container App, Function App, VM, Key Vault, App Insights, VNet
+  - And many more! See [EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md) for complete matrix
+- **Destroy API**: Enhanced with direct Azure REST API fallback for reliable cleanup
 - **Preview API**: Fully functional for all services
+- **Service Registry**: Clean separation of service creation logic in `app/services/service_registry.py`
 
 ### ❌ Removed Services
 
@@ -69,9 +78,10 @@ The following services were **removed from the codebase** due to deployment fail
 ### 🔄 Current State
 
 - **Code Status**: Clean and production-ready with 11 working services
-- **Registry Pattern**: Implemented for easy extensibility
+- **Registry Pattern**: Implemented in separate module (`service_registry.py`) for easy extensibility
+- **Edge Connections**: 88+ connections tested and verified working
 - **Error Handling**: Comprehensive error handling and fallback mechanisms
-- **Documentation**: Complete API documentation and examples
+- **Documentation**: Complete API documentation, edge connection reference, and examples
 
 ---
 
@@ -362,11 +372,37 @@ The Intermediate Representation (IR) is a graph-based format for defining infras
 
 ## 🔗 Resource Connections (Edges)
 
-Edges define relationships between resources. The `edges` array can be:
-- **Empty `[]`**: Resources are independent (no automatic connections)
-- **Populated**: Resources are connected via Event Grid, bindings, etc.
+Edges define relationships between resources. **88+ edge connections** are fully implemented and tested!
 
-### Supported Edge Types
+### Quick Reference
+
+**All valid Azure service connections are supported**, including:
+
+- **Storage** → Service Bus, Function App, Container App, SQL, Cosmos, VM, API Management, VNet
+- **Service Bus** → Function App, Container App, VM, SQL, Cosmos, API Management, VNet
+- **Function App** ↔ **Container App** (bidirectional HTTP calls)
+- **Function App** → Storage, Service Bus, SQL, Cosmos, Key Vault, App Insights, API Management, VNet
+- **Container App** → Storage, Service Bus, SQL, Cosmos, Key Vault, App Insights, API Management, VNet
+- **VM** → All services (can connect to everything)
+- **API Management** → Container App, Function App, VM, Key Vault, App Insights, VNet
+- **Key Vault** → Function App, Container App, SQL, Cosmos, VM, API Management, Storage, Service Bus
+- **App Insights** → Function App, Container App, SQL, Cosmos, VM, API Management, Storage, Service Bus
+- **VNet** → All services (network integration)
+- And many more bidirectional connections!
+
+### Complete Connection Matrix
+
+For the **complete connection matrix** and frontend validation code, see:
+**[EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md)**
+
+This document includes:
+- ✅ Full connection matrix (11x11 services)
+- ✅ All 88+ implemented connections
+- ✅ Frontend validation JavaScript code
+- ✅ Connection export details
+- ✅ Use cases and examples
+
+### Example Edge Types
 
 #### 1. Storage → Service Bus (`"intent": "notify"`)
 - **Creates:** Event Grid subscription
@@ -379,6 +415,20 @@ Edges define relationships between resources. The `edges` array can be:
 #### 3. Service Bus → Function App (`"intent": "notify"`)
 - **Creates:** Connection string bindings
 - **Result:** Function app can access queue name and connection string
+
+#### 4. Function App ↔ Container App (`"intent": "notify"`)
+- **Creates:** Bidirectional HTTP connection exports
+- **Result:** Both services can call each other via HTTP
+
+#### 5. Function App → Storage (`"intent": "notify"`)
+- **Creates:** Storage connection string export
+- **Result:** Function App can access Storage account
+
+#### 6. Container App → Storage (`"intent": "notify"`)
+- **Creates:** Storage connection string export
+- **Result:** Container App can access Storage account
+
+**And 80+ more connections!** See [EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md) for the complete list.
 
 ### Example with Edges
 
@@ -686,27 +736,51 @@ Edges define relationships between resources. The `edges` array can be:
 ### Key Components
 
 1. **FastAPI Server** (`app/main.py`): Handles HTTP requests and routes to appropriate handlers
-2. **PulumiEngine** (`app/services/pulumi_engine.py`): Orchestrates Pulumi stack operations (preview, up, destroy)
+2. **PulumiEngine** (`app/services/pulumi_engine.py`): Orchestrates Pulumi stack operations (preview, up, destroy) with Azure REST API fallback
 3. **Program Builder** (`app/services/program_builder.py`): Constructs Pulumi programs from IR
-4. **Azure Fabric** (`app/services/azure_fabric.py`): Creates Azure resources using registry pattern
-5. **Naming Service** (`app/services/naming.py`): Sanitizes resource names for Azure requirements
+4. **Azure Fabric** (`app/services/azure_fabric.py`): Creates Azure resources and handles 88+ edge connections
+5. **Service Registry** (`app/services/service_registry.py`): Maps service kinds to creation methods (registry pattern)
+6. **Naming Service** (`app/services/naming.py`): Sanitizes resource names for Azure requirements
 
 ### Registry Pattern
 
-The `AzureFabric` class uses a registry pattern for extensible service creation:
+The service uses a **registry pattern** implemented in a separate module (`app/services/service_registry.py`) to map service kinds to their creation methods. This makes it easy to add new services:
 
+**Service Registry** (`app/services/service_registry.py`):
 ```python
-self._service_registry: Dict[str, callable] = {
-    "azure.storage": self._create_storage,
-    "azure.servicebus": self._create_servicebus,
-    # ... more services
-}
+class ServiceRegistry:
+    def __init__(self, fabric_instance):
+        self.fabric = fabric_instance
+        self._service_registry: Dict[str, Callable] = {
+            "azure.storage": self.fabric._create_storage,
+            "azure.servicebus": self.fabric._create_servicebus,
+            # ... all 11 services
+        }
 ```
 
+**Usage in AzureFabric**:
+```python
+class AzureFabric:
+    def __init__(self, rg_name, location):
+        # Use ServiceRegistry for cleaner code organization
+        self._registry = ServiceRegistry(self)
+    
+    def apply_ir(self, ir):
+        for n in nodes:
+            creator = self._registry.get_creator(kind)
+            creator(n)
+```
+
+**Benefits:**
+- ✅ Clean separation of concerns
+- ✅ Easy to extend with new services
+- ✅ Centralized service management
+- ✅ Better code organization
+
 To add a new service:
-1. Implement `_create_<service>` method
-2. Add entry to `_service_registry`
-3. Add necessary imports
+1. Create a `_create_<service>` method in `AzureFabric`
+2. Add it to the registry in `ServiceRegistry`
+3. That's it! The service will be automatically available.
 
 ---
 
@@ -720,16 +794,18 @@ azure_infra_composer_full/
 │   ├── models.py            # Pydantic models for IR and requests
 │   └── services/
 │       ├── __init__.py
-│       ├── azure_fabric.py  # Azure resource creation logic (Registry)
-│       ├── program_builder.py  # Pulumi program construction
-│       ├── pulumi_engine.py    # Pulumi automation orchestration
-│       ├── naming.py           # Resource name sanitization
-│       └── utils.py            # Utility functions
+│       ├── azure_fabric.py      # Azure resource creation & edge connections
+│       ├── service_registry.py   # Service registry pattern implementation
+│       ├── program_builder.py   # Pulumi program construction
+│       ├── pulumi_engine.py     # Pulumi automation orchestration
+│       ├── naming.py             # Resource name sanitization
+│       └── utils.py              # Utility functions
 ├── pulumi-state/            # Pulumi state storage
 ├── pulumi-work/             # Pulumi working directory
 ├── venv/                    # Python virtual environment
-├── .env                     # Environment variables (optional)
-└── README.md                # This file
+├── .env                          # Environment variables (optional)
+├── README.md                     # This file
+└── EDGE_CONNECTIONS_REFERENCE.md # Complete edge connections documentation
 ```
 
 ---
@@ -793,10 +869,16 @@ Common issues:
 
 ## 📚 Additional Resources
 
-- [Pulumi Documentation](https://www.pulumi.com/docs/)
-- [Pulumi Azure Native](https://www.pulumi.com/registry/packages/azure-native/)
-- [Azure REST API Reference](https://docs.microsoft.com/en-us/rest/api/azure/)
+### Documentation Files
+- **[EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md)** - Complete edge connections matrix, validation code, and examples
+- **[README.md](./README.md)** - This file - main project documentation
+
+### External Resources
+- [Pulumi Azure Native Documentation](https://www.pulumi.com/registry/packages/azure-native/)
+- [Azure Resource Manager REST API](https://docs.microsoft.com/en-us/rest/api/azure/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Pulumi Automation API](https://www.pulumi.com/docs/guides/automation-api/)
+- [Azure Service Connection Matrix](https://docs.microsoft.com/en-us/azure/architecture/reference-architectures/)
 
 ---
 
@@ -823,9 +905,27 @@ Common issues:
 
 ## 🚀 Next Steps
 
+### Completed ✅
+- ✅ **Service Registry Pattern** - Clean separation of service creation logic
+- ✅ **88+ Edge Connections** - All valid Azure service connections implemented
+- ✅ **Bidirectional Connections** - Function App ↔ Container App, and more
+- ✅ **Enhanced Destroy API** - Direct Azure REST API fallback
+- ✅ **Comprehensive Testing** - All connections verified working
+
+### Future Enhancements 🔄
+1. **Add more Azure services** (e.g., Azure Kubernetes Service, Azure Databricks, Azure Batch)
+2. **Implement automatic resource tagging** based on project/env
+3. **Add cost estimation** before deployment
+4. **Add monitoring and alerting** for deployed resources
+5. **Support for multi-region deployments**
+6. **Add resource dependency visualization**
+7. **Support for Azure Private Endpoints** in edge connections
+8. **Add connection validation** before deployment
+
+### Getting Started
 1. **Start Small**: Test with 1-3 services first
 2. **Add Gradually**: Add more services as needed
-3. **Connect Resources**: Use edges to create workflows
+3. **Connect Resources**: Use edges to create workflows (see [EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md))
 4. **Deploy**: Use `/up` API when ready
 5. **Monitor**: Use Application Insights to monitor deployments
 6. **Extend**: Add new services using the registry pattern

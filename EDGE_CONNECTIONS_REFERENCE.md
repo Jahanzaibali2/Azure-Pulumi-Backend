@@ -22,7 +22,9 @@ This document lists all **implemented** and **non-implemented** edge connections
 
 ---
 
-## ✅ IMPLEMENTED Edge Connections (66 total)
+## ✅ IMPLEMENTED Edge Connections (88+ total)
+
+**All valid Azure service connections from the matrix are now implemented!**
 
 These connections are **fully implemented** and will work automatically:
 
@@ -391,31 +393,19 @@ These connections are **fully implemented** and will work automatically:
 
 ## ❌ NOT IMPLEMENTED Edge Connections
 
-Only a few combinations are not implemented. These will show a **warning** and be skipped, but resources will still be created.
+**All valid Azure service connections from the official matrix are now implemented!**
 
-### Missing Connections (Reverse Directions):
+The only connections that are NOT implemented are:
+1. **Self-connections** (service → same service) ❌ - Not typically needed
+2. **Invalid combinations** per Azure's architecture (e.g., SQL → Service Bus, Cosmos → Service Bus) ❌ - These don't make architectural sense
 
-1. `azure.containerapp` → `azure.servicebus` ❌ (reverse direction)
-2. `azure.containerapp` → `azure.storage` ❌ (reverse direction)
-3. `azure.containerapp` → `azure.sql` ❌ (reverse direction)
-4. `azure.containerapp` → `azure.cosmosdb` ❌ (reverse direction)
-5. `azure.containerapp` → `azure.keyvault` ❌ (reverse direction)
-6. `azure.containerapp` → `azure.appinsights` ❌ (reverse direction)
-7. `azure.containerapp` → `azure.apimanagement` ❌ (reverse direction)
-8. `azure.containerapp` → `azure.vnet` ❌ (reverse direction)
-9. `azure.functionapp` → `azure.servicebus` ❌ (reverse direction)
-10. `azure.functionapp` → `azure.storage` ❌ (reverse direction)
-11. `azure.functionapp` → `azure.sql` ❌ (reverse direction)
-12. `azure.functionapp` → `azure.cosmosdb` ❌ (reverse direction)
-13. `azure.functionapp` → `azure.keyvault` ❌ (reverse direction)
-14. `azure.functionapp` → `azure.appinsights` ❌ (reverse direction)
-15. `azure.functionapp` → `azure.apimanagement` ❌ (reverse direction)
-16. `azure.functionapp` → `azure.vnet` ❌ (reverse direction)
-17. Self-connections (service → same service) ❌
-
-**Note:** 
-- `azure.functionapp` ↔ `azure.containerapp` connections are now **✅ IMPLEMENTED** (both directions)!
-- `azure.vm` → All services are now **✅ IMPLEMENTED** (VM can connect to everything)!
+**All bidirectional connections are now supported:**
+- ✅ `azure.functionapp` ↔ `azure.containerapp` (both directions)
+- ✅ `azure.vm` → All services (VM can connect to everything)
+- ✅ `azure.containerapp` → All services (bidirectional - Storage, Service Bus, SQL, Cosmos, Key Vault, App Insights, API Management, VNet)
+- ✅ `azure.functionapp` → All services (bidirectional - Storage, Service Bus, SQL, Cosmos, Key Vault, App Insights, API Management, VNet)
+- ✅ `azure.apimanagement` → All services (bidirectional - Container App, Function App, VM, Key Vault, App Insights, VNet)
+- ✅ All other valid combinations from the Azure service matrix
 
 ---
 
@@ -446,12 +436,12 @@ Only a few combinations are not implemented. These will show a **warning** and b
 |-----------|---------|-------------|---------------|--------------|----|----|--------|----------|-----------|---------------|-----|
 | **Storage** | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Service Bus** | ❌ | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Container App** | ❌ | ❌ | - | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Function App** | ❌ | ❌ | ✅ | - | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Container App** | ✅ | ✅ | - | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Function App** | ✅ | ✅ | ✅ | - | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **VM** | ✅ | ✅ | ✅ | ✅ | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **SQL** | ✅ | ✅ | ✅ | ✅ | ❌ | - | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Cosmos** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | - | ❌ | ❌ | ❌ | ❌ |
-| **API Mgmt** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ❌ | ❌ | ❌ |
+| **API Mgmt** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ | ✅ | ✅ |
 | **Key Vault** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ❌ | ❌ |
 | **App Insights** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | - | ❌ |
 | **VNet** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
@@ -461,6 +451,7 @@ Only a few combinations are not implemented. These will show a **warning** and b
 - ❌ = Not implemented (will show warning, resources still deploy)
 
 ---
+
 
 ## 💡 Frontend Validation Example
 
@@ -551,7 +542,35 @@ const IMPLEMENTED_EDGES = [
   { from: "azure.vm", to: "azure.keyvault" },
   { from: "azure.vm", to: "azure.appinsights" },
   { from: "azure.vm", to: "azure.apimanagement" },
-  { from: "azure.vm", to: "azure.vnet" }
+  { from: "azure.vm", to: "azure.vnet" },
+  
+  // Container App → All Services (8 - bidirectional)
+  { from: "azure.containerapp", to: "azure.storage" },
+  { from: "azure.containerapp", to: "azure.servicebus" },
+  { from: "azure.containerapp", to: "azure.sql" },
+  { from: "azure.containerapp", to: "azure.cosmosdb" },
+  { from: "azure.containerapp", to: "azure.keyvault" },
+  { from: "azure.containerapp", to: "azure.appinsights" },
+  { from: "azure.containerapp", to: "azure.apimanagement" },
+  { from: "azure.containerapp", to: "azure.vnet" },
+  
+  // Function App → All Services (8 - bidirectional)
+  { from: "azure.functionapp", to: "azure.storage" },
+  { from: "azure.functionapp", to: "azure.servicebus" },
+  { from: "azure.functionapp", to: "azure.sql" },
+  { from: "azure.functionapp", to: "azure.cosmosdb" },
+  { from: "azure.functionapp", to: "azure.keyvault" },
+  { from: "azure.functionapp", to: "azure.appinsights" },
+  { from: "azure.functionapp", to: "azure.apimanagement" },
+  { from: "azure.functionapp", to: "azure.vnet" },
+  
+  // API Management → All Services (6 - bidirectional)
+  { from: "azure.apimanagement", to: "azure.containerapp" },
+  { from: "azure.apimanagement", to: "azure.functionapp" },
+  { from: "azure.apimanagement", to: "azure.vm" },
+  { from: "azure.apimanagement", to: "azure.keyvault" },
+  { from: "azure.apimanagement", to: "azure.appinsights" },
+  { from: "azure.apimanagement", to: "azure.vnet" }
 ];
 
 function validateEdge(edge, nodes) {
