@@ -1,0 +1,7 @@
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-dotenv==1.0.1
+pydantic==2.9.2
+pulumi==3.142.0
+pulumi-azure-native==2.82.0

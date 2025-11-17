@@ -6,22 +6,19 @@ from typing import Dict, Any, Optional
 import requests
 from pulumi import automation as auto
 from .program_builder import build_pulumi_program
+from .validator import PayloadValidator
 
-DEFAULT_LOCATION = os.getenv("AZURE_LOCATION", "westeurope")
+from pathlib import Path
+
+DEFAULT_LOCATION = os.getenv("AZURE_LOCATION", "southeastasia")
 
 def init_pulumi_env() -> None:
     """
     Compute a clean local backend + pulumi home from env (PULUMI_STATE_DIR / PULUMI_WORK_DIR)
     and apply them to the current process so /health can display them before any preview/up.
+    Reads values from .env file (loaded via load_dotenv() in main.py).
     """
-    
     os.environ.update(_ensure_pulumi_env())
-
-
-DEFAULT_LOCATION = os.getenv("AZURE_LOCATION", "westeurope")
-
-# at top of file
-from pathlib import Path
 
 def _win_path(p: str) -> str:
     # Convert Git Bash style /c/... to C:\...
@@ -31,21 +28,31 @@ def _win_path(p: str) -> str:
 
 def _ensure_pulumi_env() -> dict:
     env = os.environ.copy()
-    # (keep your pulumi.exe PATH logic as-is above)
-    env.setdefault("PULUMI_SECRETS_PROVIDER", "passphrase")         # NEW
-    env.setdefault("PULUMI_CONFIG_PASSPHRASE", "local-dev-only")  
-    # --- Build backend from PULUMI_STATE_DIR (your absolute path) ---
-    state_raw = _win_path(os.getenv("PULUMI_STATE_DIR", r"C:\jahanzaib-git\pulumi-state")) # e.g., C:\jahanzaib-git\pulumi-state will change for bobby and abdulah
+    # Pulumi secrets configuration (read from .env file, with defaults)
+    # These are already in env from load_dotenv(), but set defaults if not present
+    env.setdefault("PULUMI_SECRETS_PROVIDER", "passphrase")
+    env.setdefault("PULUMI_CONFIG_PASSPHRASE", "local-dev-only")
+    
+    # --- Build backend from PULUMI_STATE_DIR (read from .env file) ---
+    # Default to relative path if not set in .env
+    state_raw = os.getenv("PULUMI_STATE_DIR", str(Path.cwd() / "pulumi-state"))
+    state_raw = _win_path(state_raw)
     state_dir = Path(state_raw).resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
 
     # IMPORTANT: use two slashes => file://C:/... to avoid C:/C: duplication
-    backend_url = "file://" + state_dir.as_posix()   # e.g., file://C:/jahanzaib-git/pulumi-state
+    backend_url = "file://" + state_dir.as_posix()
     env["PULUMI_BACKEND_URL"] = backend_url
 
-    # Optional: stable Pulumi home
-    home_raw = _win_path(os.getenv("PULUMI_HOME", r"C:\jahanzaib-git\.pulumi-home"))
-    pulumi_home = Path(home_raw).resolve()
+    # Pulumi home directory (read from .env file)
+    # Default to ~/.pulumi if not set in .env
+    home_raw = os.getenv("PULUMI_HOME")
+    if home_raw:
+        home_raw = _win_path(home_raw)
+        pulumi_home = Path(home_raw).resolve()
+    else:
+        # Default to user's home directory
+        pulumi_home = Path.home() / ".pulumi"
     pulumi_home.mkdir(parents=True, exist_ok=True)
     env["PULUMI_HOME"] = str(pulumi_home)
 
@@ -54,19 +61,25 @@ def _ensure_pulumi_env() -> dict:
     print("Using PULUMI_HOME        =", env["PULUMI_HOME"])
     return env
 
-# Work dir: use PULUMI_WORK_DIR if set
-WORK_DIR = Path(_win_path(os.getenv("PULUMI_WORK_DIR", str(Path.cwd() / "pulumi-work")))).resolve()
-WORK_DIR.mkdir(parents=True, exist_ok=True)
+def _get_work_dir() -> Path:
+    """Get Pulumi work directory from .env file, or use default"""
+    work_dir_raw = os.getenv("PULUMI_WORK_DIR", str(Path.cwd() / "pulumi-work"))
+    work_dir = Path(_win_path(work_dir_raw)).resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    return work_dir
 
 def _stack(project: str, env_name: str, program):
     pulumi_env = _ensure_pulumi_env()
     os.environ.update(pulumi_env)  # make sure the CLI child sees our env
+    
+    # Get work directory (reads from .env file)
+    work_dir = _get_work_dir()
 
     stack = auto.create_or_select_stack(
         stack_name=f"{project}-{env_name}",
         project_name=project,
         program=program,
-        work_dir=str(WORK_DIR),
+        work_dir=str(work_dir),
     )
     return stack, pulumi_env
 
@@ -80,11 +93,27 @@ class PulumiEngine:
     def preview(ir: Dict[str, Any]):
         project = ir.get("project", "canvas")
         env_name = ir.get("env", "dev")
+        
+        # Validate payload first
+        validation = PayloadValidator.validate(ir)
+        
+        # Build and run Pulumi preview
         program = build_pulumi_program(ir)
         stack, _ = _stack(project, env_name, program)
         PulumiEngine._set_config(stack, ir)
         res = stack.preview(on_output=print)
-        return {"preview": True, "changeSummary": res.change_summary}
+        
+        # Combine validation results with preview results
+        return {
+            "preview": True,
+            "changeSummary": res.change_summary,
+            "validation": {
+                "valid": validation["valid"],
+                "errors": validation["errors"],
+                "warnings": validation["warnings"],
+                "suggestions": validation["suggestions"]
+            }
+        }
 
     @staticmethod
     def up(ir: Dict[str, Any]):
@@ -93,7 +122,37 @@ class PulumiEngine:
         program = build_pulumi_program(ir)
         stack, _ = _stack(project, env_name, program)
         PulumiEngine._set_config(stack, ir)
-        up_res = stack.up(on_output=print)
+        
+        try:
+            up_res = stack.up(on_output=print)
+        except Exception as e:
+            # Extract detailed error information
+            error_msg = str(e)
+            
+            # Try to get more details from the exception
+            if hasattr(e, 'args') and e.args:
+                error_msg = str(e.args[0]) if e.args else str(e)
+            
+            # Check for common Azure errors
+            if "MaxNumberOfRegionalEnvironmentsInSubExceeded" in error_msg:
+                raise ValueError(
+                    "Container App Environment limit reached. Your subscription can only have 1 Container App Environment "
+                    "in this region. Solutions: 1) Remove Container App from payload, 2) Use a different region, "
+                    "3) Delete existing Container App Environment in this region."
+                )
+            elif "StorageAccountAlreadyTaken" in error_msg or "already taken" in error_msg.lower():
+                raise ValueError(
+                    "Storage account name is already taken. Storage account names must be globally unique. "
+                    "Solution: Use a more unique name or add a random suffix to your storage account name."
+                )
+            elif "RequestDisallowedByAzure" in error_msg:
+                raise ValueError(
+                    "Azure subscription policy blocked this region. Your subscription has restrictions on which regions "
+                    "can be used. Solution: Try a different region like 'eastus', 'westus2', or 'centralus'."
+                )
+            else:
+                # Re-raise with original message for other errors
+                raise ValueError(f"Deployment failed: {error_msg}")
 
         def _unwrap(x):
             if hasattr(x, "value"):
