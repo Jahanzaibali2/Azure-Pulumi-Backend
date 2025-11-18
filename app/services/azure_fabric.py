@@ -516,10 +516,12 @@ class AzureFabric:
         else:
             # If it's a string, use it as the SKU name
             sku_name = sku_prop if isinstance(sku_prop, str) else "Developer"
-            sku_capacity = 1
+            # For Consumption tier, capacity is 0, for others default to 1
+            sku_capacity = 0 if sku_name == "Consumption" else 1
         
         # API Management Service
         # Note: Developer SKU has restrictions on some settings
+        # Consumption tier requires capacity=0, other tiers require capacity>=1
         apim = apimanagement.ApiManagementService(
             f"apim-{name}",
             resource_group_name=self.rg_name,
@@ -527,7 +529,7 @@ class AzureFabric:
             publisher_email=props.get("publisherEmail", "admin@contoso.com"),
             sku=apimanagement.ApiManagementServiceSkuPropertiesArgs(
                 name=sku_name,
-                capacity=sku_capacity if sku_name != "Consumption" else None,
+                capacity=sku_capacity,  # Always provide capacity (0 for Consumption, >=1 for others)
             ),
         )
         
@@ -541,6 +543,7 @@ class AzureFabric:
     def _create_key_vault(self, node: Dict[str, Any]):
         """Create Azure Key Vault (Secrets Manager equivalent) - Secrets management"""
         import os
+        import re
         name = safe_name(node.get("name") or node["id"])[:40]
         props = node.get("props", {})
         
@@ -556,10 +559,24 @@ class AzureFabric:
                 "Provide it in props.tenantId or ensure ARM_TENANT_ID is set."
             )
         
-        # Key Vault
+        # Prepare vault name: must match ^[a-zA-Z0-9-]{3,24}$ (no underscores)
+        # Remove any invalid characters and ensure it's 3-24 chars
+        vault_name_base = re.sub(r'[^a-zA-Z0-9-]', '', name.lower())
+        if len(vault_name_base) < 3:
+            vault_name_base = vault_name_base + "kv"[:3-len(vault_name_base)]
+        if len(vault_name_base) > 24:
+            vault_name_base = vault_name_base[:24]
+        
+        # Ensure it starts with a letter
+        if vault_name_base and not vault_name_base[0].isalpha():
+            vault_name_base = "kv" + vault_name_base
+            vault_name_base = vault_name_base[:24]
+        
+        # Key Vault - explicitly set vault_name parameter
         vault = keyvault.Vault(
             f"kv-{name}",
             resource_group_name=self.rg_name,
+            vault_name=vault_name_base,  # Explicitly set the Azure vault name
             properties=keyvault.VaultPropertiesArgs(
                 tenant_id=str(tenant_id),  # Ensure it's a string
                 sku=keyvault.SkuArgs(

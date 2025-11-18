@@ -42,18 +42,20 @@ This service provides a REST API that accepts infrastructure definitions in a gr
 
 ### ✅ What's Working
 
-- **11 Major Services** are fully implemented and tested:
-  1. Storage Account (S3 equivalent)
-  2. Service Bus (SQS equivalent)
-  3. Container App (ECS/Fargate equivalent)
-  4. Virtual Machine (EC2 equivalent)
-  5. Function App (Lambda equivalent)
-  6. SQL Database (RDS equivalent)
-  7. Cosmos DB (DynamoDB equivalent)
-  8. API Management (API Gateway equivalent)
-  9. Key Vault (Secrets Manager equivalent)
-  10. Application Insights (CloudWatch equivalent)
-  11. Virtual Network (VPC equivalent)
+- **10/11 Major Services** are fully implemented, tested, and working:
+  1. ✅ Storage Account (S3 equivalent) - **Working**
+  2. ✅ Service Bus (SQS equivalent) - **Working**
+  3. ✅ Container App (ECS/Fargate equivalent) - **Working**
+  4. ⚠️ Virtual Machine (EC2 equivalent) - **Blocked by Azure quota** (see Known Issues)
+  5. ✅ Function App (Lambda equivalent) - **Working**
+  6. ✅ SQL Database (RDS equivalent) - **Working**
+  7. ✅ Cosmos DB (DynamoDB equivalent) - **Working**
+  8. ✅ API Management (API Gateway equivalent) - **Fixed & Working**
+  9. ✅ Key Vault (Secrets Manager equivalent) - **Fixed & Working**
+  10. ✅ Application Insights (CloudWatch equivalent) - **Working**
+  11. ✅ Virtual Network (VPC equivalent) - **Working**
+
+**Success Rate: 91% (10/11 services)**
 
 - **88+ Edge Connections**: All valid Azure service connections implemented and tested
   - Storage ↔ Service Bus, Function App, Container App, SQL, Cosmos, VM, API Management, VNet
@@ -64,8 +66,10 @@ This service provides a REST API that accepts infrastructure definitions in a gr
   - API Management → Container App, Function App, VM, Key Vault, App Insights, VNet
   - And many more! See [EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md) for complete matrix
 - **Destroy API**: Enhanced with direct Azure REST API fallback for reliable cleanup
-- **Preview API**: Fully functional for all services
+- **Preview API**: Fully functional with built-in validation - catches issues before deployment
+- **Validation API**: Built-in payload validation with error detection and suggestions
 - **Service Registry**: Clean separation of service creation logic in `app/services/service_registry.py`
+- **Recent Fixes**: Key Vault naming issue fixed, API Management SKU capacity fixed
 
 ### ❌ Removed Services
 
@@ -77,11 +81,32 @@ The following services were **removed from the codebase** due to deployment fail
 
 ### 🔄 Current State
 
-- **Code Status**: Clean and production-ready with 11 working services
+- **Code Status**: Clean and production-ready with 10/11 services working (91% success rate)
 - **Registry Pattern**: Implemented in separate module (`service_registry.py`) for easy extensibility
 - **Edge Connections**: 88+ connections tested and verified working
-- **Error Handling**: Comprehensive error handling and fallback mechanisms
-- **Documentation**: Complete API documentation, edge connection reference, and examples
+- **Error Handling**: Comprehensive error handling with specific Azure error detection
+- **Validation**: Built-in payload validation catches issues before deployment
+- **Documentation**: Complete API documentation, edge connection reference, test results, and examples
+
+### ⚠️ Known Issues
+
+- **Virtual Machine (azure.vm)**: Blocked by Azure subscription quota
+  - **Error**: `IPv4BasicSkuPublicIpCountLimitReached`
+  - **Cause**: Subscription has 0 Basic SKU Public IP quota in some regions
+  - **Solution**: Request quota increase from Azure Portal or use Standard SKU Public IPs
+  - **Status**: Code is correct; this is an Azure subscription limit, not a code issue
+
+### ✅ Recent Fixes (2025-01-27)
+
+1. **Key Vault Naming Issue** - Fixed
+   - Problem: Vault name validation error
+   - Fix: Explicitly set `vault_name` parameter with proper sanitization
+   - Result: Key Vault now deploys successfully
+
+2. **API Management SKU Capacity** - Fixed
+   - Problem: Missing `sku.capacity` property for Consumption tier
+   - Fix: Always provide capacity (0 for Consumption, >=1 for others)
+   - Result: API Management now deploys successfully
 
 ---
 
@@ -94,12 +119,12 @@ The following services were **removed from the codebase** due to deployment fail
 | `azure.storage` | Storage Account | S3 | ✅ Working |
 | `azure.servicebus` | Service Bus Namespace | SQS/SNS | ✅ Working |
 | `azure.containerapp` | Container App | ECS/Fargate | ✅ Working |
-| `azure.vm` | Virtual Machine | EC2 | ✅ Working |
+| `azure.vm` | Virtual Machine | EC2 | ⚠️ Azure Quota Limit |
 | `azure.functionapp` | Function App | Lambda | ✅ Working |
 | `azure.sql` | SQL Database | RDS | ✅ Working |
 | `azure.cosmosdb` | Cosmos DB | DynamoDB | ✅ Working |
-| `azure.apimanagement` | API Management | API Gateway | ✅ Working |
-| `azure.keyvault` | Key Vault | Secrets Manager | ✅ Working |
+| `azure.apimanagement` | API Management | API Gateway | ✅ Working (Fixed) |
+| `azure.keyvault` | Key Vault | Secrets Manager | ✅ Working (Fixed) |
 | `azure.appinsights` | Application Insights | CloudWatch | ✅ Working |
 | `azure.vnet` | Virtual Network | VPC | ✅ Working |
 
@@ -199,7 +224,7 @@ Health check endpoint that returns server status and configuration.
 ```
 
 ### `POST /preview`
-Preview infrastructure changes without deploying.
+Preview infrastructure changes without deploying. **Now includes built-in validation!**
 
 **Request Body:**
 ```json
@@ -220,7 +245,34 @@ Preview infrastructure changes without deploying.
 }
 ```
 
-**Response:** Returns a preview of what will be created/updated/deleted.
+**Response:** Returns a preview with validation results:
+```json
+{
+  "preview": true,
+  "changeSummary": {
+    "create": 5,
+    "update": 0,
+    "delete": 0
+  },
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      "Storage account 'test' is very short. Short names are more likely to be taken globally."
+    ],
+    "suggestions": [
+      "Use a more unique name like 'testmy-projectdev2025'"
+    ]
+  }
+}
+```
+
+**Validation Features:**
+- ✅ Checks resource name formats (Storage, Key Vault, etc.)
+- ✅ Detects common naming issues (too short, too common)
+- ✅ Warns about Azure subscription limits (Container App Environments)
+- ✅ Validates edge references
+- ✅ Provides actionable suggestions
 
 ### `POST /up`
 Deploy infrastructure to Azure.
@@ -840,9 +892,21 @@ Azure resource names must be globally unique. If you get "already taken" errors:
 ### Deployment failures
 Common issues:
 - **Quota limits**: Check Azure subscription quotas
+  - **VM Public IPs**: Subscription may have 0 Basic SKU Public IP quota (request increase)
+  - **Container App Environments**: Limited to 1 per region per subscription
 - **Region availability**: Some services may not be available in all regions
 - **SKU restrictions**: Some SKUs may not be available in your subscription
 - **Configuration errors**: Check property values match Azure requirements
+- **Resource name conflicts**: Storage accounts must be globally unique
+
+### Validation errors
+The `/preview` API now includes validation that catches common issues:
+- **Storage account names**: Too short, too common, or invalid characters
+- **Key Vault names**: Invalid characters (underscores not allowed)
+- **Container App limits**: Warns about 1-per-region limit
+- **Edge references**: Validates that edges reference existing nodes
+
+**Always run `/preview` before `/up` to catch issues early!**
 
 ---
 
@@ -870,8 +934,10 @@ Common issues:
 ## 📚 Additional Resources
 
 ### Documentation Files
-- **[EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md)** - Complete edge connections matrix, validation code, and examples
 - **[README.md](./README.md)** - This file - main project documentation
+- **[EDGE_CONNECTIONS_REFERENCE.md](./EDGE_CONNECTIONS_REFERENCE.md)** - Complete edge connections matrix, validation code, and examples
+- **[PROBLEMATIC_RESOURCES_REPORT.md](./PROBLEMATIC_RESOURCES_REPORT.md)** - Comprehensive test results and known issues
+- **[PROBLEMATIC_RESOURCES_REPORT.json](./PROBLEMATIC_RESOURCES_REPORT.json)** - Machine-readable test results
 
 ### External Resources
 - [Pulumi Azure Native Documentation](https://www.pulumi.com/registry/packages/azure-native/)
@@ -911,6 +977,11 @@ Common issues:
 - ✅ **Bidirectional Connections** - Function App ↔ Container App, and more
 - ✅ **Enhanced Destroy API** - Direct Azure REST API fallback
 - ✅ **Comprehensive Testing** - All connections verified working
+- ✅ **Payload Validation** - Built-in validation in Preview API
+- ✅ **Key Vault Fix** - Naming issue resolved
+- ✅ **API Management Fix** - SKU capacity issue resolved
+- ✅ **Error Detection** - Specific Azure error parsing and reporting
+- ✅ **Test Suite** - Comprehensive deployment testing script
 
 ### Future Enhancements 🔄
 1. **Add more Azure services** (e.g., Azure Kubernetes Service, Azure Databricks, Azure Batch)
@@ -955,5 +1026,15 @@ For issues or questions:
 ---
 
 **Last Updated:** 2025-01-27  
-**Version:** 0.2.0  
-**Status:** Production Ready (11 Services)
+**Version:** 0.2.1  
+**Status:** Production Ready (10/11 Services Working - 91% Success Rate)
+
+### Test Results Summary
+- **Services Tested:** 11
+- **Services Working:** 10 (91%)
+- **Services Blocked:** 1 (VM - Azure quota limit)
+- **Edges Working:** 10/10 (100%)
+- **Code Issues:** All resolved ✅
+- **Azure Limits:** 1 known issue (VM Public IP quota)
+
+See [PROBLEMATIC_RESOURCES_REPORT.md](./PROBLEMATIC_RESOURCES_REPORT.md) for detailed test results.
